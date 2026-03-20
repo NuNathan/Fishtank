@@ -12,6 +12,7 @@ using UnityEditor;
 public class FishHudSchoolController : MonoBehaviour
 {
     private const string FishPrefabAssetPath = "Assets/assets/fish.prefab";
+    private const string SharkPrefabAssetPath = "Assets/assets/Shark.prefab";
     private const float HudTextScale = 1.5f;
 
     private static class HudLayout
@@ -50,6 +51,7 @@ public class FishHudSchoolController : MonoBehaviour
     [Header("Scene References")]
     [SerializeField] private Transform tankBoundsSource;
     [SerializeField] private GameObject fishPrefab;
+    [SerializeField] private GameObject predatorPrefab;
 
     [Header("School Controls")]
     [SerializeField, Range(0, 9999)] private int seed = 1;
@@ -61,6 +63,11 @@ public class FishHudSchoolController : MonoBehaviour
     [SerializeField] private float minimumSpawnSpacing = 0.8f;
     [SerializeField, Range(1, 32)] private int spawnPositionAttempts = 10;
 
+    [Header("Predator")]
+    [SerializeField] private bool spawnPredatorOnStart = true;
+    [SerializeField] private Vector3 predatorSpawnOffsetNormalized = new Vector3(0.72f, 0.08f, -0.72f);
+    [SerializeField] private Vector3 predatorVisualRotationEuler = new Vector3(0f, 180f, 0f);
+
     private Camera attachedCamera;
     private Transform fishRoot;
     private Slider seedSlider;
@@ -70,6 +77,7 @@ public class FishHudSchoolController : MonoBehaviour
     private bool schoolMovementActive;
     private bool missingTankWarningShown;
     private bool fallbackVisualWarningShown;
+    private bool missingPredatorPrefabWarningShown;
 
     private void Awake()
     {
@@ -106,6 +114,7 @@ public class FishHudSchoolController : MonoBehaviour
         }
 
         ResolveFishPrefabReference();
+        ResolvePredatorPrefabReference();
     }
 
     private void ResolveFishPrefabReference()
@@ -117,6 +126,18 @@ public class FishHudSchoolController : MonoBehaviour
 
 #if UNITY_EDITOR
         fishPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(FishPrefabAssetPath);
+#endif
+    }
+
+    private void ResolvePredatorPrefabReference()
+    {
+        if (predatorPrefab != null)
+        {
+            return;
+        }
+
+#if UNITY_EDITOR
+        predatorPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(SharkPrefabAssetPath);
 #endif
     }
 
@@ -284,6 +305,12 @@ public class FishHudSchoolController : MonoBehaviour
             fallbackVisualWarningShown = true;
         }
 
+        if (spawnPredatorOnStart && predatorPrefab == null && !missingPredatorPrefabWarningShown)
+        {
+            Debug.LogWarning("FishHudSchoolController could not resolve the Shark predator prefab reference.", this);
+            missingPredatorPrefabWarningShown = true;
+        }
+
         if (fishRoot == null)
         {
             fishRoot = new GameObject("FishSchoolRuntime").transform;
@@ -313,6 +340,11 @@ public class FishHudSchoolController : MonoBehaviour
             {
                 fishMovement.SetTankBounds(tankCenter, tankExtents);
             }
+        }
+
+        if (spawnPredatorOnStart)
+        {
+            SpawnPredator(random, tankCenter, tankExtents);
         }
     }
 
@@ -345,7 +377,47 @@ public class FishHudSchoolController : MonoBehaviour
         return visualRoot;
     }
 
-    private static void CreateFallbackPart(Transform parent, PrimitiveType primitiveType, Vector3 localPosition, Vector3 localScale)
+    private void SpawnPredator(System.Random random, Vector3 tankCenter, Vector3 tankExtents)
+    {
+        if (predatorPrefab == null)
+        {
+            return;
+        }
+
+        GameObject predatorObject = new GameObject("Predator");
+        predatorObject.transform.SetParent(fishRoot, false);
+        predatorObject.name = "Predator";
+
+        Vector3 clampedSpawnOffset = new Vector3(
+            Mathf.Clamp(predatorSpawnOffsetNormalized.x, -1f, 1f),
+            Mathf.Clamp(predatorSpawnOffsetNormalized.y, -1f, 1f),
+            Mathf.Clamp(predatorSpawnOffsetNormalized.z, -1f, 1f));
+
+        Vector3 spawnPosition = tankCenter + Vector3.Scale(tankExtents, clampedSpawnOffset);
+        spawnPosition = ClampToTank(spawnPosition, tankCenter, tankExtents);
+        predatorObject.transform.position = spawnPosition;
+
+        Vector3 initialForward = tankCenter - spawnPosition;
+        if (initialForward.sqrMagnitude <= 0.0001f)
+        {
+            initialForward = CreateInitialSchoolForward(random);
+        }
+
+        predatorObject.transform.rotation = Quaternion.LookRotation(initialForward.normalized, Vector3.up);
+
+        GameObject predatorVisual = Instantiate(predatorPrefab, predatorObject.transform);
+        predatorVisual.name = "PredatorVisual";
+        predatorVisual.transform.localPosition = Vector3.zero;
+        predatorVisual.transform.localRotation = Quaternion.Euler(predatorVisualRotationEuler);
+
+        PredatorMovement predatorMovement = predatorObject.GetComponent<PredatorMovement>();
+        if (predatorMovement == null)
+        {
+            predatorMovement = predatorObject.AddComponent<PredatorMovement>();
+        }
+    }
+
+    private static GameObject CreateFallbackPart(Transform parent, PrimitiveType primitiveType, Vector3 localPosition, Vector3 localScale)
     {
         GameObject part = GameObject.CreatePrimitive(primitiveType);
         part.name = primitiveType.ToString();
@@ -358,6 +430,8 @@ public class FishHudSchoolController : MonoBehaviour
         {
             Destroy(collider);
         }
+
+        return part;
     }
 
     private void ClearExistingFish()
@@ -524,10 +598,17 @@ public class FishHudSchoolController : MonoBehaviour
 
         for (int i = 0; i < fishRoot.childCount; i++)
         {
-            FishMovement fishMovement = fishRoot.GetChild(i).GetComponent<FishMovement>();
+            Transform child = fishRoot.GetChild(i);
+            FishMovement fishMovement = child.GetComponent<FishMovement>();
             if (fishMovement != null)
             {
                 fishMovement.SetMovementActive(active);
+            }
+
+            PredatorMovement predatorMovement = child.GetComponentInChildren<PredatorMovement>();
+            if (predatorMovement != null)
+            {
+                predatorMovement.SetMovementActive(active);
             }
         }
     }

@@ -410,7 +410,7 @@ MonoBehaviour:
   spawnPositionAttempts: 10
   spawnPredatorOnStart: 1
   predatorSpawnOffsetNormalized: {x: 0.72, y: 0.08, z: -0.72}
-  predatorVisualRotationEuler: {x: 0, y: 270, z: 0}
+  predatorVisualRotationEuler: {x: 0, y: 90, z: 0}
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
