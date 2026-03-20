@@ -388,12 +388,7 @@ public class FishHudSchoolController : MonoBehaviour
         predatorObject.transform.SetParent(fishRoot, false);
         predatorObject.name = "Predator";
 
-        Vector3 clampedSpawnOffset = new Vector3(
-            Mathf.Clamp(predatorSpawnOffsetNormalized.x, -1f, 1f),
-            Mathf.Clamp(predatorSpawnOffsetNormalized.y, -1f, 1f),
-            Mathf.Clamp(predatorSpawnOffsetNormalized.z, -1f, 1f));
-
-        Vector3 spawnPosition = tankCenter + Vector3.Scale(tankExtents, clampedSpawnOffset);
+        Vector3 spawnPosition = tankCenter + RandomInBox(random, tankExtents);
         spawnPosition = ClampToTank(spawnPosition, tankCenter, tankExtents);
         predatorObject.transform.position = spawnPosition;
 
