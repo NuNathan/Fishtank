@@ -405,6 +405,8 @@ MonoBehaviour:
   numberOfFish: 24
   tankPadding: {x: 0.9, y: 1.2, z: 0.9}
   schoolRadius: 2
+  minimumSpawnSpacing: 0.8
+  spawnPositionAttempts: 10
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
