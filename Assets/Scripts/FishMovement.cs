@@ -3,7 +3,7 @@ using UnityEngine;
 
 public class FishMovement : MonoBehaviour
 {
-    private static readonly List<FishMovement> ActiveFish = new List<FishMovement>();
+    public static readonly List<FishMovement> ActiveFish = new List<FishMovement>();
 
     [Header("Movement")]
     [SerializeField] private bool startMovingOnSpawn = false;
@@ -36,6 +36,11 @@ public class FishMovement : MonoBehaviour
     [Header("Tank Avoidance")]
     [SerializeField] private float wallAvoidanceDistance = 1.25f;
     [SerializeField] private float wallAvoidanceStrength = 2f;
+
+    [Header("Predator Avoidance")]
+    [SerializeField] private float predatorAvoidanceRadius = 4f;
+    [SerializeField] private float predatorAvoidanceStrength = 5f;
+    [SerializeField] private float maxPredatorAvoidanceForce = 4f;
 
     private bool isMoving;
     private bool movementStateInitialized;
@@ -88,8 +93,10 @@ public class FishMovement : MonoBehaviour
         }
 
         Vector3 schoolingForce = CalculateSchoolingForce();
-        Vector3 wallAvoidanceForce = CalculateWallAvoidanceForce(schoolingForce);
-        Vector3 desiredForward = transform.forward + schoolingForce + wallAvoidanceForce;
+        Vector3 predatorAvoidanceForce = CalculatePredatorAvoidanceForce();
+        Vector3 combinedForces = schoolingForce + predatorAvoidanceForce;
+        Vector3 wallAvoidanceForce = CalculateWallAvoidanceForce(combinedForces);
+        Vector3 desiredForward = transform.forward + combinedForces + wallAvoidanceForce;
         desiredForward = wiggleOffsetRotation * desiredForward;
 
         if (desiredForward.sqrMagnitude > 0.0001f)
@@ -225,6 +232,29 @@ public class FishMovement : MonoBehaviour
         Vector3 schoolingForce = ((softRepulsionForce + cohesionForce) * Mathf.Max(0f, schoolingStrength)) + alignmentForce;
         schoolingForce = Vector3.ClampMagnitude(schoolingForce, Mathf.Max(0f, maxSchoolingForce));
         return separationForce + schoolingForce;
+    }
+
+    private Vector3 CalculatePredatorAvoidanceForce()
+    {
+        Vector3 avoidanceForce = Vector3.zero;
+
+        for (int i = 0; i < PredatorMovement.ActivePredators.Count; i++)
+        {
+            PredatorMovement predator = PredatorMovement.ActivePredators[i];
+            if (predator == null) continue;
+
+            Vector3 toPredator = predator.transform.position - transform.position;
+            float distance = toPredator.magnitude;
+
+            if (distance < predatorAvoidanceRadius && distance > 0.0001f)
+            {
+                
+                float pressure = 1f - Mathf.Clamp01(distance / predatorAvoidanceRadius);
+                avoidanceForce += -toPredator.normalized * (pressure * pressure); 
+            }
+        }
+
+        return Vector3.ClampMagnitude(avoidanceForce * predatorAvoidanceStrength, maxPredatorAvoidanceForce);
     }
 
     private Vector3 GetFallbackSeparationDirection(FishMovement other)
