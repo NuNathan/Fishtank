@@ -7,8 +7,8 @@ public class PredatorMovement : MonoBehaviour
 
     [Header("Movement")]
     [SerializeField] private bool startMovingOnSpawn = false;
-    [SerializeField] private float moveSpeed = 2.2f;
-    [SerializeField] private float turnSpeed = 2.6f;
+    [SerializeField] private float moveSpeed = 2.7f;
+    [SerializeField] private float turnSpeed = 2.5f;
 
     [Header("Wiggle")]
     [SerializeField] private float wiggleInterval = 1.35f;
@@ -25,6 +25,11 @@ public class PredatorMovement : MonoBehaviour
     [SerializeField] private float wallAvoidanceDistance = 1.25f;
     [SerializeField] private float wallAvoidanceStrength = 2f;
 
+    [Header("Eating")]
+    [SerializeField] private float eatRadius = 0.8f; // how close the shark needs to be to bite
+    [SerializeField] private float eatCooldown = 1.5f; // bite cooldown
+    
+    private float lastEatTime;
     private bool isMoving;
     private bool movementStateInitialized;
     private Quaternion targetRotation;
@@ -66,6 +71,8 @@ public class PredatorMovement : MonoBehaviour
             return;
         }
 
+        TryEat();
+
         wiggleTimer += Time.deltaTime;
         float interval = GetSafeWiggleInterval();
         if (wiggleTimer >= interval)
@@ -101,10 +108,10 @@ public class PredatorMovement : MonoBehaviour
 
             float distanceToPredator = Vector3.Distance(transform.position, fish.transform.position);
             
-            // Ignore fish outside of vision
+            // ignore fish outside of vision
             if (distanceToPredator > visionRadius) continue;
 
-            // Check how many neighbors this fish has (Isolation Check)
+            // checking how many neighbors this fish has (isolation rule)
             int neighborCount = 0;
             for (int j = 0; j < FishMovement.ActiveFish.Count; j++)
             {
@@ -116,7 +123,7 @@ public class PredatorMovement : MonoBehaviour
                 }
             }
 
-            // Lower score is better. Real distance + fake distance penalty for being in a group
+            // lower score better, real distance + fake distance (group penalty)
             float score = distanceToPredator + (neighborCount * isolationPenalty);
 
             if (score < bestScore)
@@ -126,14 +133,14 @@ public class PredatorMovement : MonoBehaviour
             }
         }
 
-        // Apply force towards the best target
+        // apply force towards the best target
         if (bestTarget != null)
         {
             Vector3 toTarget = (bestTarget.transform.position - transform.position).normalized;
             return toTarget * chaseStrength;
         }
 
-        return Vector3.zero; // Wander aimlessly if no target found
+        return Vector3.zero; // wander if no target found
     }
 
     public void SetTankBounds(Vector3 center, Vector3 extents)
@@ -223,5 +230,44 @@ public class PredatorMovement : MonoBehaviour
     private float GetSafeWiggleInterval()
     {
         return Mathf.Max(0.05f, wiggleInterval);
+    }
+
+    private void TryEat()
+    {
+        if (Time.time < lastEatTime + eatCooldown) { // dont eat if on cooldown
+            return;
+            } 
+
+        FishMovement closestPrey = null;
+        float closestDist = float.MaxValue;
+
+        for (int i = 0; i < FishMovement.ActiveFish.Count; i++) // finding closest fish
+        {
+            FishMovement prey = FishMovement.ActiveFish[i];
+            if (prey == null) 
+            {
+                continue;
+            }
+
+            float dist = Vector3.Distance(transform.position, prey.transform.position);
+
+            if (dist <= eatRadius && dist < closestDist) // if fish is closest and inside mouth
+            {
+                closestDist = dist;
+                closestPrey = prey;
+            }
+        }
+
+        if (closestPrey != null) // if close enough eat
+        {
+            Eat(closestPrey);
+        }
+    }
+
+    private void Eat(FishMovement prey)
+    {
+        lastEatTime = Time.time;
+
+        Destroy(prey.gameObject);
     }
 }
