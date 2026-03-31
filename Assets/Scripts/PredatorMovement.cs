@@ -7,8 +7,8 @@ public class PredatorMovement : MonoBehaviour
 
     [Header("Movement")]
     [SerializeField] private bool startMovingOnSpawn = false;
-    [SerializeField] private float moveSpeed = 2.7f;
-    [SerializeField] private float turnSpeed = 2.5f;
+    [SerializeField] private float moveSpeed = 2.5f;
+    [SerializeField] private float turnSpeed = 2.0f;
 
     [Header("Wiggle")]
     [SerializeField] private float wiggleInterval = 1.35f;
