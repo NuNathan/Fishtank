@@ -324,7 +324,7 @@ public class PredatorMovement : MonoBehaviour
                 fishEatCooldowns[id] = now + eatCooldown;
             }
         }
-
+        FishHudSchoolController.OnFishEaten();
         Destroy(prey.gameObject);
     }
 }

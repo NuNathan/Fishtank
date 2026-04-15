@@ -17,21 +17,21 @@ public class FishHudSchoolController : MonoBehaviour
     private static class HudLayout
     {
         public static readonly Vector2 PanelPosition = new Vector2(20f, -20f);
-        public static readonly Vector2 PanelSize = new Vector2(360f, 274f);
+        public static readonly Vector2 PanelSize = new Vector2(420f, 362f);
         public static readonly Vector2 HeaderPosition = new Vector2(12f, -10f);
-        public static readonly Vector2 HeaderSize = new Vector2(336f, 24f);
-        public static readonly Vector2 FooterPosition = new Vector2(12f, -240f);
-        public static readonly Vector2 FooterSize = new Vector2(336f, 18f);
-        public static readonly Vector2 LabelSize = new Vector2(120f, 24f);
-        public static readonly Vector2 SliderOffset = new Vector2(124f, -(LabelSize.y * HudTextScale - 18f) * 0.5f);
+        public static readonly Vector2 HeaderSize = new Vector2(396f, 24f);
+        public static readonly Vector2 FooterPosition = new Vector2(12f, -328f);
+        public static readonly Vector2 FooterSize = new Vector2(396f, 18f);
+        public static readonly Vector2 LabelSize = new Vector2(170f, 24f);
+        public static readonly Vector2 SliderOffset = new Vector2(178f, -(LabelSize.y * HudTextScale - 18f) * 0.5f);
         public static readonly Vector2 SliderSize = new Vector2(160f, 18f);
-        public static readonly Vector2 ValueTextOffset = new Vector2(292f, 0f);
+        public static readonly Vector2 ValueTextOffset = new Vector2(350f, 0f);
         public static readonly Vector2 ValueTextSize = new Vector2(48f, 24f);
         public static readonly Vector2 ButtonSize = new Vector2(102f, 28f);
         public const float ContentLeft = 12f;
         public const float FirstRowY = -74f;
         public const float RowSpacing = 44f;
-        public const float ButtonRowY = -208f;
+        public const float ButtonRowY = -296f;
         public const float ButtonSpacing = 12f;
 
         public static Vector2 GetRowPosition(int rowIndex)
@@ -82,6 +82,13 @@ public class FishHudSchoolController : MonoBehaviour
     private Text seedValueText;
     private Text fishCountValueText;
     private Text sharkCountValueText;
+    private Text fishEatenText;
+    private int fishEatenCount;
+    private Slider simDurationSlider;
+    private Text simDurationValueText;
+    private float simTimeRemaining;
+    private bool simTimerActive;
+    private static FishHudSchoolController instance;
     private bool schoolMovementActive;
     private bool missingTankWarningShown;
     private bool fallbackVisualWarningShown;
@@ -109,6 +116,7 @@ public class FishHudSchoolController : MonoBehaviour
 
     private void Awake()
     {
+        instance = this;
         attachedCamera = GetComponent<Camera>();
         ResolveSceneReferences();
         EnsureEventSystem();
@@ -129,6 +137,28 @@ public class FishHudSchoolController : MonoBehaviour
     {
         SyncSettingsFromHud();
         SyncTuningToInstances();
+
+        // Simulation timer countdown
+        if (simTimerActive && schoolMovementActive)
+        {
+            simTimeRemaining -= Time.deltaTime;
+            if (simTimeRemaining <= 0f)
+            {
+                simTimeRemaining = 0f;
+                simTimerActive = false;
+                SetSchoolMovementActive(false);
+                schoolMovementActive = false;
+                if (simDurationValueText != null)
+                    simDurationValueText.text = "Done!";
+            }
+            else if (simDurationValueText != null)
+            {
+                int totalSeconds = Mathf.CeilToInt(simTimeRemaining);
+                int mins = totalSeconds / 60;
+                int secs = totalSeconds % 60;
+                simDurationValueText.text = $"{mins}:{secs:D2}";
+            }
+        }
 
         float dt = Time.deltaTime;
 
@@ -249,13 +279,23 @@ public class FishHudSchoolController : MonoBehaviour
         Image panelImage = panelObject.GetComponent<Image>();
         panelImage.color = new Color(0.05f, 0.11f, 0.18f, 0.82f);
 
-        CreateText(panelObject.transform, font, "Tank Controls", 18, TextAnchor.MiddleLeft, HudLayout.HeaderPosition, HudLayout.HeaderSize);
+        CreateText(panelObject.transform, font, "Simulation Controls", 18, TextAnchor.MiddleLeft, HudLayout.HeaderPosition, HudLayout.HeaderSize);
         CreateText(panelObject.transform, font, "Press Esc to unlock the cursor for UI.", 12, TextAnchor.MiddleLeft, HudLayout.FooterPosition, HudLayout.FooterSize);
 
         int rowIndex = 0;
         seedSlider = CreateLabeledSlider(panelObject.transform, font, "SEED", rowIndex++, 0f, 9999f, out seedValueText);
-        fishCountSlider = CreateLabeledSlider(panelObject.transform, font, "number of fish", rowIndex++, 1f, 1000f, out fishCountValueText);
-        sharkCountSlider = CreateLabeledSlider(panelObject.transform, font, "number of sharks", rowIndex++, 1f, 5f, out sharkCountValueText);
+        fishCountSlider = CreateLabeledSlider(panelObject.transform, font, "Number of Fish", rowIndex++, 1f, 1000f, out fishCountValueText);
+        sharkCountSlider = CreateLabeledSlider(panelObject.transform, font, "Number of Sharks", rowIndex++, 1f, 5f, out sharkCountValueText);
+
+        // Metric row: fish eaten
+        Vector2 metricRowPosition = HudLayout.GetRowPosition(rowIndex++);
+        fishEatenText = CreateText(panelObject.transform, font, "Fish Eaten: 0", 14, TextAnchor.MiddleLeft, metricRowPosition, HudLayout.HeaderSize);
+
+        // Runtime slider
+        simDurationSlider = CreateLabeledSlider(panelObject.transform, font, "Run time (mins)", rowIndex++, 1f, 5f, out simDurationValueText);
+        simDurationSlider.wholeNumbers = true;
+        simDurationSlider.SetValueWithoutNotify(1f);
+
         CreateButton(panelObject.transform, font, "Play", HudLayout.GetButtonPosition(0), HudLayout.ButtonSize, OnPlayClicked);
         CreateButton(panelObject.transform, font, "Pause", HudLayout.GetButtonPosition(1), HudLayout.ButtonSize, OnPauseClicked);
         CreateButton(panelObject.transform, font, "Reset", HudLayout.GetButtonPosition(2), HudLayout.ButtonSize, OnResetClicked);
@@ -350,6 +390,8 @@ public class FishHudSchoolController : MonoBehaviour
         }
 
         UpdateValueLabels();
+        fishEatenCount = 0;
+        UpdateFishEatenLabel();
         UnityEngine.Random.InitState(seed);
         RebuildSchool();
         SetSchoolMovementActive(schoolMovementActive);
@@ -417,18 +459,45 @@ public class FishHudSchoolController : MonoBehaviour
 
     private void OnPlayClicked()
     {
+        if (simDurationSlider != null)
+        {
+            simTimeRemaining = Mathf.RoundToInt(simDurationSlider.value) * 60f;
+            simTimerActive = true;
+        }
         SetSchoolMovementActive(true);
     }
 
     private void OnPauseClicked()
     {
+        simTimerActive = false;
         SetSchoolMovementActive(false);
     }
 
     private void OnResetClicked()
     {
+        simTimerActive = false;
+        simTimeRemaining = 0f;
         schoolMovementActive = false;
+        if (simDurationValueText != null && simDurationSlider != null)
+            simDurationValueText.text = Mathf.RoundToInt(simDurationSlider.value).ToString();
         ApplySettings();
+    }
+
+    public static void OnFishEaten()
+    {
+        if (instance != null)
+        {
+            instance.fishEatenCount++;
+            instance.UpdateFishEatenLabel();
+        }
+    }
+
+    private void UpdateFishEatenLabel()
+    {
+        if (fishEatenText != null)
+        {
+            fishEatenText.text = $"Fish Eaten: {fishEatenCount}";
+        }
     }
 
     private void RebuildSchool()
@@ -775,6 +844,11 @@ public class FishHudSchoolController : MonoBehaviour
         {
             int displayedSharkCount = sharkCountSlider != null ? Mathf.RoundToInt(sharkCountSlider.value) : numberOfPredators;
             sharkCountValueText.text = displayedSharkCount.ToString();
+        }
+
+        if (simDurationValueText != null && simDurationSlider != null)
+        {
+            simDurationValueText.text = Mathf.RoundToInt(simDurationSlider.value).ToString();
         }
     }
 
