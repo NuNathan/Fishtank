@@ -515,12 +515,16 @@ MonoBehaviour:
   fishPrefab: {fileID: 4416247021799931001, guid: 6b3e0b1dbeef0624a822da212e7ac57d, type: 3}
   predatorPrefab: {fileID: 253877229150173942, guid: 2ad06d140bc79414d8d6a94f6d4294b5, type: 3}
   seed: 1
-  numberOfFish: 24
+  numberOfFish: 600
   tankPadding: {x: 0.9, y: 1.2, z: 0.9}
   schoolRadius: 2
   minimumSpawnSpacing: 0.8
   spawnPositionAttempts: 10
+  spatialGridCellSize: 1.5
+  staggerGroups: 3
   spawnPredatorOnStart: 1
+  numberOfPredators: 1
+  predatorMinimumSpacing: 2
   predatorSpawnOffsetNormalized: {x: 0.72, y: 0.08, z: -0.72}
   predatorVisualRotationEuler: {x: 0, y: 90, z: 0}
 --- !u!1 &410087039

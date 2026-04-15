@@ -46,25 +46,31 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   startMovingOnSpawn: 0
-  moveSpeed: 1.5
-  turnSpeed: 4
+  idleSpeed: 1.5
+  burstSpeed: 2.5
+  turnSpeed: 6
   wiggleInterval: 0.75
   maxWiggleAngle: 15
   maxPitchWiggleAngle: 8
   schoolingStrength: 0.75
   preferredNeighborDistance: 1.1
   attractionExponent: 3
-  repulsionExponent: 1
+  repulsionExponent: 0.7
   interactionRadius: 3
   maxSchoolingForce: 1.5
   alignmentStrength: 0.75
-  separationRadius: 0.7
+  separationRadius: 1
   separationStrength: 3
   maxSeparationForce: 2.5
   followConeAngle: 180
   followConeOriginLocalOffset: {x: 0, y: 0, z: -0.35}
   wallAvoidanceDistance: 2.25
   wallAvoidanceStrength: 1.2
+  predatorAvoidanceRadius: 2.5
+  predatorAvoidanceStrength: 15
+  maxPredatorAvoidanceForce: 12
+  lateralFleeBlend: 1
+  debugArrowLength: 1.5
 --- !u!1001 &8814239501388123443
 PrefabInstance:
   m_ObjectHideFlags: 0

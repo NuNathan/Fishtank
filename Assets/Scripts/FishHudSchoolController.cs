@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -18,13 +17,13 @@ public class FishHudSchoolController : MonoBehaviour
     private static class HudLayout
     {
         public static readonly Vector2 PanelPosition = new Vector2(20f, -20f);
-        public static readonly Vector2 PanelSize = new Vector2(360f, 230f);
+        public static readonly Vector2 PanelSize = new Vector2(360f, 274f);
         public static readonly Vector2 HeaderPosition = new Vector2(12f, -10f);
         public static readonly Vector2 HeaderSize = new Vector2(336f, 24f);
-        public static readonly Vector2 FooterPosition = new Vector2(12f, -196f);
+        public static readonly Vector2 FooterPosition = new Vector2(12f, -240f);
         public static readonly Vector2 FooterSize = new Vector2(336f, 18f);
         public static readonly Vector2 LabelSize = new Vector2(120f, 24f);
-        public static readonly Vector2 SliderOffset = new Vector2(124f, 3f);
+        public static readonly Vector2 SliderOffset = new Vector2(124f, -(LabelSize.y * HudTextScale - 18f) * 0.5f);
         public static readonly Vector2 SliderSize = new Vector2(160f, 18f);
         public static readonly Vector2 ValueTextOffset = new Vector2(292f, 0f);
         public static readonly Vector2 ValueTextSize = new Vector2(48f, 24f);
@@ -32,7 +31,7 @@ public class FishHudSchoolController : MonoBehaviour
         public const float ContentLeft = 12f;
         public const float FirstRowY = -74f;
         public const float RowSpacing = 44f;
-        public const float ButtonRowY = -154f;
+        public const float ButtonRowY = -208f;
         public const float ButtonSpacing = 12f;
 
         public static Vector2 GetRowPosition(int rowIndex)
@@ -55,7 +54,7 @@ public class FishHudSchoolController : MonoBehaviour
 
     [Header("School Controls")]
     [SerializeField, Range(0, 9999)] private int seed = 1;
-    [SerializeField, Range(1, 100)] private int numberOfFish = 24;
+    [SerializeField, Range(1, 1000)] private int numberOfFish = 600;
 
     [Header("Spawn Settings")]
     [SerializeField] private Vector3 tankPadding = new Vector3(0.9f, 1.2f, 0.9f);
@@ -63,8 +62,15 @@ public class FishHudSchoolController : MonoBehaviour
     [SerializeField] private float minimumSpawnSpacing = 0.8f;
     [SerializeField, Range(1, 32)] private int spawnPositionAttempts = 10;
 
+    [Header("Performance")]
+    [SerializeField] private float spatialGridCellSize = 1.5f;
+    [SerializeField, Range(1, 5)] private int staggerGroups = 3;
+    private int staggerFrame;
+
     [Header("Predator")]
     [SerializeField] private bool spawnPredatorOnStart = true;
+    [SerializeField, Range(1, 5)] private int numberOfPredators = 1;
+    [SerializeField] private float predatorMinimumSpacing = 2f;
     [SerializeField] private Vector3 predatorSpawnOffsetNormalized = new Vector3(0.72f, 0.08f, -0.72f);
     [SerializeField] private Vector3 predatorVisualRotationEuler = new Vector3(0f, 180f, 0f);
 
@@ -72,12 +78,34 @@ public class FishHudSchoolController : MonoBehaviour
     private Transform fishRoot;
     private Slider seedSlider;
     private Slider fishCountSlider;
+    private Slider sharkCountSlider;
     private Text seedValueText;
     private Text fishCountValueText;
+    private Text sharkCountValueText;
     private bool schoolMovementActive;
     private bool missingTankWarningShown;
     private bool fallbackVisualWarningShown;
     private bool missingPredatorPrefabWarningShown;
+
+    // Right panel sliders
+    private Slider sharkSpeedSlider;
+    private Slider sharkTurnSpeedSlider;
+    private Slider fishSpeedSlider;
+    private Slider fishTurnSpeedSlider;
+    private Slider fishBurstSpeedSlider;
+    private Slider avoidRadiusSlider;
+    private Slider avoidStrengthSlider;
+    private Slider maxAvoidForceSlider;
+    private Slider lateralFleeSlider;
+    private Text sharkSpeedValueText;
+    private Text sharkTurnSpeedValueText;
+    private Text fishSpeedValueText;
+    private Text fishTurnSpeedValueText;
+    private Text fishBurstSpeedValueText;
+    private Text avoidRadiusValueText;
+    private Text avoidStrengthValueText;
+    private Text maxAvoidForceValueText;
+    private Text lateralFleeValueText;
 
     private void Awake()
     {
@@ -100,6 +128,46 @@ public class FishHudSchoolController : MonoBehaviour
     private void Update()
     {
         SyncSettingsFromHud();
+        SyncTuningToInstances();
+
+        float dt = Time.deltaTime;
+
+        FishMovement.UpdateCache();
+
+        FishSpatialGrid grid = FishMovement.SpatialGrid;
+        if (grid != null)
+        {
+            grid.UpdateGrid(FishMovement.ActiveFish);
+        }
+
+        int currentGroup = staggerFrame % staggerGroups;
+        staggerFrame++;
+
+        // Check if any predator exists so we can force recalc for nearby fish
+        bool anyPredatorActive = PredatorMovement.ActivePredators.Count > 0;
+
+        for (int i = 0; i < FishMovement.ActiveFish.Count; i++)
+        {
+            FishMovement fish = FishMovement.ActiveFish[i];
+            if (fish != null)
+            {
+                bool recalc = (i % staggerGroups) == currentGroup;
+                if (!recalc && anyPredatorActive)
+                {
+                    recalc = fish.IsPredatorNearby();
+                }
+                fish.UpdateMovement(dt, recalc);
+            }
+        }
+
+        for (int i = 0; i < PredatorMovement.ActivePredators.Count; i++)
+        {
+            PredatorMovement predator = PredatorMovement.ActivePredators[i];
+            if (predator != null)
+            {
+                predator.UpdateMovement(dt);
+            }
+        }
     }
 
     private void ResolveSceneReferences()
@@ -186,25 +254,85 @@ public class FishHudSchoolController : MonoBehaviour
 
         int rowIndex = 0;
         seedSlider = CreateLabeledSlider(panelObject.transform, font, "SEED", rowIndex++, 0f, 9999f, out seedValueText);
-        fishCountSlider = CreateLabeledSlider(panelObject.transform, font, "number of fish", rowIndex++, 1f, 100f, out fishCountValueText);
+        fishCountSlider = CreateLabeledSlider(panelObject.transform, font, "number of fish", rowIndex++, 1f, 1000f, out fishCountValueText);
+        sharkCountSlider = CreateLabeledSlider(panelObject.transform, font, "number of sharks", rowIndex++, 1f, 5f, out sharkCountValueText);
         CreateButton(panelObject.transform, font, "Play", HudLayout.GetButtonPosition(0), HudLayout.ButtonSize, OnPlayClicked);
         CreateButton(panelObject.transform, font, "Pause", HudLayout.GetButtonPosition(1), HudLayout.ButtonSize, OnPauseClicked);
         CreateButton(panelObject.transform, font, "Reset", HudLayout.GetButtonPosition(2), HudLayout.ButtonSize, OnResetClicked);
 
         seedSlider.wholeNumbers = true;
         fishCountSlider.wholeNumbers = true;
+        sharkCountSlider.wholeNumbers = true;
         seedSlider.SetValueWithoutNotify(seed);
         fishCountSlider.SetValueWithoutNotify(numberOfFish);
+        sharkCountSlider.SetValueWithoutNotify(numberOfPredators);
         UpdateValueLabels();
 
         seedSlider.onValueChanged.AddListener(OnSeedChanged);
         fishCountSlider.onValueChanged.AddListener(OnFishCountChanged);
+        sharkCountSlider.onValueChanged.AddListener(OnSharkCountChanged);
+
+        // Right panel - runtime tuning
+        BuildRightPanel(canvasObject.transform, font);
+    }
+
+    private void BuildRightPanel(Transform canvasTransform, Font font)
+    {
+        int totalRows = 11; // 2 headers + 9 sliders
+        float rightPanelHeight = -HudLayout.FirstRowY + (HudLayout.RowSpacing * totalRows) + 20f;
+        GameObject rightPanelObject = new GameObject("TuningPanel", typeof(RectTransform), typeof(Image));
+        rightPanelObject.transform.SetParent(canvasTransform, false);
+
+        RectTransform rightPanelRect = rightPanelObject.GetComponent<RectTransform>();
+        rightPanelRect.anchorMin = new Vector2(1f, 1f);
+        rightPanelRect.anchorMax = new Vector2(1f, 1f);
+        rightPanelRect.pivot = new Vector2(1f, 1f);
+        rightPanelRect.anchoredPosition = new Vector2(-20f, -20f);
+        rightPanelRect.sizeDelta = new Vector2(HudLayout.PanelSize.x, rightPanelHeight);
+
+        Image rightPanelImage = rightPanelObject.GetComponent<Image>();
+        rightPanelImage.color = new Color(0.05f, 0.11f, 0.18f, 0.82f);
+
+        CreateText(rightPanelObject.transform, font, "Tuning", 18, TextAnchor.MiddleLeft, HudLayout.HeaderPosition, HudLayout.HeaderSize);
+
+        int rowIndex = 0;
+
+        // Shark settings
+        CreateText(rightPanelObject.transform, font, "— Shark —", 13, TextAnchor.MiddleLeft, HudLayout.GetRowPosition(rowIndex), HudLayout.LabelSize);
+        rowIndex++;
+        sharkSpeedSlider = CreateLabeledSlider(rightPanelObject.transform, font, "speed", rowIndex++, 0.1f, 10f, out sharkSpeedValueText);
+        sharkTurnSpeedSlider = CreateLabeledSlider(rightPanelObject.transform, font, "turn speed", rowIndex++, 0.05f, 3f, out sharkTurnSpeedValueText);
+
+        // Fish settings
+        CreateText(rightPanelObject.transform, font, "— Fish —", 13, TextAnchor.MiddleLeft, HudLayout.GetRowPosition(rowIndex), HudLayout.LabelSize);
+        rowIndex++;
+        fishSpeedSlider = CreateLabeledSlider(rightPanelObject.transform, font, "speed", rowIndex++, 0.1f, 10f, out fishSpeedValueText);
+        fishTurnSpeedSlider = CreateLabeledSlider(rightPanelObject.transform, font, "turn speed", rowIndex++, 0.5f, 20f, out fishTurnSpeedValueText);
+        fishBurstSpeedSlider = CreateLabeledSlider(rightPanelObject.transform, font, "burst spd", rowIndex++, 0.1f, 15f, out fishBurstSpeedValueText);
+        avoidRadiusSlider = CreateLabeledSlider(rightPanelObject.transform, font, "avoid rad", rowIndex++, 0.5f, 15f, out avoidRadiusValueText);
+        avoidStrengthSlider = CreateLabeledSlider(rightPanelObject.transform, font, "avoid str", rowIndex++, 1f, 200f, out avoidStrengthValueText);
+        maxAvoidForceSlider = CreateLabeledSlider(rightPanelObject.transform, font, "max force", rowIndex++, 1f, 200f, out maxAvoidForceValueText);
+        lateralFleeSlider = CreateLabeledSlider(rightPanelObject.transform, font, "lateral flee", rowIndex++, 0f, 1f, out lateralFleeValueText);
+
+        // Set initial values from prefab defaults
+        sharkSpeedSlider.SetValueWithoutNotify(3f);
+        sharkTurnSpeedSlider.SetValueWithoutNotify(1f);
+        fishSpeedSlider.SetValueWithoutNotify(1.5f);
+        fishTurnSpeedSlider.SetValueWithoutNotify(6f);
+        fishBurstSpeedSlider.SetValueWithoutNotify(2.5f);
+        avoidRadiusSlider.SetValueWithoutNotify(3f);
+        avoidStrengthSlider.SetValueWithoutNotify(50f);
+        maxAvoidForceSlider.SetValueWithoutNotify(40f);
+        lateralFleeSlider.SetValueWithoutNotify(0.55f);
+
+        UpdateRightPanelValueLabels();
     }
 
     private void ApplySettings()
     {
         seed = Mathf.Clamp(seed, 0, 9999);
-        numberOfFish = Mathf.Clamp(numberOfFish, 1, 100);
+        numberOfFish = Mathf.Clamp(numberOfFish, 1, 1000);
+        numberOfPredators = Mathf.Clamp(numberOfPredators, 1, 5);
 
         if (seedSlider != null)
         {
@@ -214,6 +342,11 @@ public class FishHudSchoolController : MonoBehaviour
         if (fishCountSlider != null)
         {
             fishCountSlider.SetValueWithoutNotify(numberOfFish);
+        }
+
+        if (sharkCountSlider != null)
+        {
+            sharkCountSlider.SetValueWithoutNotify(numberOfPredators);
         }
 
         UpdateValueLabels();
@@ -238,10 +371,20 @@ public class FishHudSchoolController : MonoBehaviour
 
         if (fishCountSlider != null)
         {
-            int sliderFishCount = Mathf.Clamp(Mathf.RoundToInt(fishCountSlider.value), 1, 100);
+            int sliderFishCount = Mathf.Clamp(Mathf.RoundToInt(fishCountSlider.value), 1, 1000);
             if (numberOfFish != sliderFishCount)
             {
                 numberOfFish = sliderFishCount;
+                settingsChanged = true;
+            }
+        }
+
+        if (sharkCountSlider != null)
+        {
+            int sliderSharkCount = Mathf.Clamp(Mathf.RoundToInt(sharkCountSlider.value), 1, 5);
+            if (numberOfPredators != sliderSharkCount)
+            {
+                numberOfPredators = sliderSharkCount;
                 settingsChanged = true;
             }
         }
@@ -263,6 +406,12 @@ public class FishHudSchoolController : MonoBehaviour
     private void OnFishCountChanged(float value)
     {
         numberOfFish = Mathf.RoundToInt(value);
+        ApplySettings();
+    }
+
+    private void OnSharkCountChanged(float value)
+    {
+        numberOfPredators = Mathf.RoundToInt(value);
         ApplySettings();
     }
 
@@ -319,7 +468,15 @@ public class FishHudSchoolController : MonoBehaviour
 
         ClearExistingFish();
 
+        FishMovement.SetSpatialGrid(new FishSpatialGrid(tankCenter, tankExtents, spatialGridCellSize));
+
         System.Random random = new System.Random(seed);
+
+        if (spawnPredatorOnStart)
+        {
+            System.Random predatorRandom = new System.Random(seed + 7919);
+            SpawnPredators(predatorRandom, tankCenter, tankExtents);
+        }
 
         Vector3 centerRange = GetSchoolCenterRange(tankExtents);
         Vector3 schoolCenter = tankCenter + RandomInBox(random, centerRange);
@@ -340,11 +497,6 @@ public class FishHudSchoolController : MonoBehaviour
             {
                 fishMovement.SetTankBounds(tankCenter, tankExtents);
             }
-        }
-
-        if (spawnPredatorOnStart)
-        {
-            SpawnPredator(random, tankCenter, tankExtents);
         }
     }
 
@@ -377,39 +529,77 @@ public class FishHudSchoolController : MonoBehaviour
         return visualRoot;
     }
 
-    private void SpawnPredator(System.Random random, Vector3 tankCenter, Vector3 tankExtents)
+    private void SpawnPredators(System.Random random, Vector3 tankCenter, Vector3 tankExtents)
     {
         if (predatorPrefab == null)
         {
             return;
         }
 
-        GameObject predatorObject = new GameObject("Predator");
-        predatorObject.transform.SetParent(fishRoot, false);
-        predatorObject.name = "Predator";
+        float safeSpacing = Mathf.Max(0f, predatorMinimumSpacing);
+        List<Vector3> placedPredatorPositions = new List<Vector3>(numberOfPredators);
 
-        Vector3 spawnPosition = tankCenter + RandomInBox(random, tankExtents);
-        spawnPosition = ClampToTank(spawnPosition, tankCenter, tankExtents);
-        predatorObject.transform.position = spawnPosition;
-
-        Vector3 initialForward = tankCenter - spawnPosition;
-        if (initialForward.sqrMagnitude <= 0.0001f)
+        for (int i = 0; i < numberOfPredators; i++)
         {
-            initialForward = CreateInitialSchoolForward(random);
+            Vector3 spawnPosition = FindPredatorSpawnPosition(random, tankCenter, tankExtents, safeSpacing, placedPredatorPositions);
+            placedPredatorPositions.Add(spawnPosition);
+
+            GameObject predatorObject = new GameObject("Predator_" + (i + 1));
+            predatorObject.transform.SetParent(fishRoot, false);
+            predatorObject.transform.position = spawnPosition;
+
+            Vector3 initialForward = tankCenter - spawnPosition;
+            if (initialForward.sqrMagnitude <= 0.0001f)
+            {
+                initialForward = CreateInitialSchoolForward(random);
+            }
+
+            predatorObject.transform.rotation = Quaternion.LookRotation(initialForward.normalized, Vector3.up);
+
+            GameObject predatorVisual = Instantiate(predatorPrefab, predatorObject.transform);
+            predatorVisual.name = "PredatorVisual";
+            predatorVisual.transform.localPosition = Vector3.zero;
+            predatorVisual.transform.localRotation = Quaternion.Euler(predatorVisualRotationEuler);
+
+            PredatorMovement predatorMovement = predatorObject.GetComponent<PredatorMovement>();
+            if (predatorMovement == null)
+            {
+                predatorMovement = predatorObject.AddComponent<PredatorMovement>();
+            }
+
+            predatorMovement.SetTankBounds(tankCenter, tankExtents);
+        }
+    }
+
+    private Vector3 FindPredatorSpawnPosition(System.Random random, Vector3 tankCenter, Vector3 tankExtents, float minimumSpacing, List<Vector3> placedPositions)
+    {
+        int attempts = Mathf.Max(1, spawnPositionAttempts);
+        Vector3 bestPosition = ClampToTank(tankCenter + RandomInBox(random, tankExtents), tankCenter, tankExtents);
+        float bestNearestDistance = GetNearestNeighborDistance(bestPosition, placedPositions);
+
+        if (minimumSpacing <= 0f || placedPositions.Count == 0)
+        {
+            return bestPosition;
         }
 
-        predatorObject.transform.rotation = Quaternion.LookRotation(initialForward.normalized, Vector3.up);
-
-        GameObject predatorVisual = Instantiate(predatorPrefab, predatorObject.transform);
-        predatorVisual.name = "PredatorVisual";
-        predatorVisual.transform.localPosition = Vector3.zero;
-        predatorVisual.transform.localRotation = Quaternion.Euler(predatorVisualRotationEuler);
-
-        PredatorMovement predatorMovement = predatorObject.GetComponent<PredatorMovement>();
-        if (predatorMovement == null)
+        for (int attempt = 0; attempt < attempts; attempt++)
         {
-            predatorMovement = predatorObject.AddComponent<PredatorMovement>();
+            Vector3 candidate = ClampToTank(tankCenter + RandomInBox(random, tankExtents), tankCenter, tankExtents);
+            float nearestDistance = GetNearestNeighborDistance(candidate, placedPositions);
+
+            if (nearestDistance >= minimumSpacing)
+            {
+                return candidate;
+            }
+
+            if (nearestDistance > bestNearestDistance)
+            {
+                bestNearestDistance = nearestDistance;
+                bestPosition = candidate;
+            }
         }
+
+        return bestPosition;
     }
 
     private static GameObject CreateFallbackPart(Transform parent, PrimitiveType primitiveType, Vector3 localPosition, Vector3 localScale)
@@ -580,7 +770,79 @@ public class FishHudSchoolController : MonoBehaviour
             int displayedFishCount = fishCountSlider != null ? Mathf.RoundToInt(fishCountSlider.value) : numberOfFish;
             fishCountValueText.text = displayedFishCount.ToString();
         }
+
+        if (sharkCountValueText != null)
+        {
+            int displayedSharkCount = sharkCountSlider != null ? Mathf.RoundToInt(sharkCountSlider.value) : numberOfPredators;
+            sharkCountValueText.text = displayedSharkCount.ToString();
+        }
     }
+
+    private void UpdateRightPanelValueLabels()
+    {
+        if (sharkSpeedValueText != null && sharkSpeedSlider != null)
+            sharkSpeedValueText.text = sharkSpeedSlider.value.ToString("F2");
+        if (sharkTurnSpeedValueText != null && sharkTurnSpeedSlider != null)
+            sharkTurnSpeedValueText.text = sharkTurnSpeedSlider.value.ToString("F2");
+        if (fishSpeedValueText != null && fishSpeedSlider != null)
+            fishSpeedValueText.text = fishSpeedSlider.value.ToString("F2");
+        if (fishTurnSpeedValueText != null && fishTurnSpeedSlider != null)
+            fishTurnSpeedValueText.text = fishTurnSpeedSlider.value.ToString("F1");
+        if (fishBurstSpeedValueText != null && fishBurstSpeedSlider != null)
+            fishBurstSpeedValueText.text = fishBurstSpeedSlider.value.ToString("F2");
+        if (avoidRadiusValueText != null && avoidRadiusSlider != null)
+            avoidRadiusValueText.text = avoidRadiusSlider.value.ToString("F1");
+        if (avoidStrengthValueText != null && avoidStrengthSlider != null)
+            avoidStrengthValueText.text = avoidStrengthSlider.value.ToString("F0");
+        if (maxAvoidForceValueText != null && maxAvoidForceSlider != null)
+            maxAvoidForceValueText.text = maxAvoidForceSlider.value.ToString("F0");
+        if (lateralFleeValueText != null && lateralFleeSlider != null)
+            lateralFleeValueText.text = lateralFleeSlider.value.ToString("F2");
+    }
+
+    private void SyncTuningToInstances()
+    {
+        // Sync shark sliders
+        if (sharkSpeedSlider != null && sharkTurnSpeedSlider != null)
+        {
+            float sharkSpeed = sharkSpeedSlider.value;
+            float sharkTurn = sharkTurnSpeedSlider.value;
+            for (int i = 0; i < PredatorMovement.ActivePredators.Count; i++)
+            {
+                PredatorMovement predator = PredatorMovement.ActivePredators[i];
+                if (predator == null) continue;
+                predator.MoveSpeedValue = sharkSpeed;
+                predator.TurnSpeedValue = sharkTurn;
+            }
+        }
+
+        // Sync fish sliders
+        if (fishSpeedSlider != null)
+        {
+            float fSpeed = fishSpeedSlider.value;
+            float fTurn = fishTurnSpeedSlider.value;
+            float fBurst = fishBurstSpeedSlider.value;
+            float aRadius = avoidRadiusSlider.value;
+            float aStrength = avoidStrengthSlider.value;
+            float aMaxForce = maxAvoidForceSlider.value;
+            float lFlee = lateralFleeSlider.value;
+            for (int i = 0; i < FishMovement.ActiveFish.Count; i++)
+            {
+                FishMovement fish = FishMovement.ActiveFish[i];
+                if (fish == null) continue;
+                fish.IdleSpeed = fSpeed;
+                fish.TurnSpeedValue = fTurn;
+                fish.BurstSpeed = fBurst;
+                fish.PredatorAvoidanceRadiusValue = aRadius;
+                fish.PredatorAvoidanceStrengthValue = aStrength;
+                fish.MaxPredatorAvoidanceForceValue = aMaxForce;
+                fish.LateralFleeBlendValue = lFlee;
+            }
+        }
+
+        UpdateRightPanelValueLabels();
+    }
+
 
     private void SetSchoolMovementActive(bool active)
     {

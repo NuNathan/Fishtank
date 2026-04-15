@@ -7,8 +7,11 @@ public class PredatorMovement : MonoBehaviour
 
     [Header("Movement")]
     [SerializeField] private bool startMovingOnSpawn = false;
-    [SerializeField] private float moveSpeed = 2.5f;
-    [SerializeField] private float turnSpeed = 2.0f;
+    [SerializeField] private float moveSpeed = 3f;//2.5f;
+    [SerializeField] private float turnSpeed = 0.4f;
+
+    public float MoveSpeedValue { get => moveSpeed; set => moveSpeed = value; }
+    public float TurnSpeedValue { get => turnSpeed; set => turnSpeed = value; }
 
     [Header("Wiggle")]
     [SerializeField] private float wiggleInterval = 1.35f;
@@ -18,8 +21,11 @@ public class PredatorMovement : MonoBehaviour
     [Header("Hunting")]
     [SerializeField] private float visionRadius = 8f;
     [SerializeField] private float chaseStrength = 2f;
-    [SerializeField] private float isolationPenalty = 3f; // adds penalty to target for every neighbor
-    [SerializeField] private float isolationCheckRadius = 1.5f; // how close another fish is to count as neighbor
+
+    [Header("Burst Turn")]
+    [SerializeField] private float burstTurnInterval = 5f;
+    [SerializeField] private float burstTurnDuration = 0.5f;
+    [SerializeField] private float burstTurnSpeed = 4f;
 
     [Header("Tank Avoidance")]
     [SerializeField] private float wallAvoidanceDistance = 1.25f;
@@ -27,19 +33,24 @@ public class PredatorMovement : MonoBehaviour
 
     [Header("Eating")]
     [SerializeField] private float eatRadius = 0.8f; // how close the shark needs to be to bite
-    [SerializeField] private float eatCooldown = 1.5f; // bite cooldown
-    
-    private float lastEatTime;
+    [SerializeField] private float eatCooldown = 1.5f; // per-fish cooldown after being eaten nearby
+    [SerializeField] private int maxEatPerPass = 3; // max fish eaten in a single pass
+
+    private readonly Dictionary<int, float> fishEatCooldowns = new Dictionary<int, float>();
+    private readonly List<int> cooldownCleanupKeys = new List<int>();
     private bool isMoving;
     private bool movementStateInitialized;
     private Quaternion targetRotation;
     private float wiggleTimer;
     private Quaternion wiggleOffsetRotation = Quaternion.identity;
+    private float burstTurnTimer;
+    private float burstTurnRemainingTime;
 
     // Tank boundaries
     private Vector3 tankCenter;
     private Vector3 tankExtents = Vector3.one;
     private bool hasTankBounds;
+    private readonly List<int> gridQueryResults = new List<int>();
 
     private void OnEnable()
     {
@@ -62,9 +73,11 @@ public class PredatorMovement : MonoBehaviour
         targetRotation = transform.rotation;
         wiggleTimer = Random.Range(0f, GetSafeWiggleInterval());
         wiggleOffsetRotation = Quaternion.identity;
+        burstTurnTimer = Random.Range(0f, burstTurnInterval);
+        burstTurnRemainingTime = 0f;
     }
 
-    private void Update()
+    public void UpdateMovement(float deltaTime)
     {
         if (!isMoving)
         {
@@ -73,7 +86,7 @@ public class PredatorMovement : MonoBehaviour
 
         TryEat();
 
-        wiggleTimer += Time.deltaTime;
+        wiggleTimer += deltaTime;
         float interval = GetSafeWiggleInterval();
         if (wiggleTimer >= interval)
         {
@@ -92,55 +105,82 @@ public class PredatorMovement : MonoBehaviour
             targetRotation = Quaternion.LookRotation(desiredForward.normalized, Vector3.up);
         }
 
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, turnSpeed * Time.deltaTime);
-        transform.position += transform.forward * (moveSpeed * Time.deltaTime);
+        // Burst turn timer
+        if (burstTurnRemainingTime > 0f)
+        {
+            burstTurnRemainingTime -= deltaTime;
+        }
+        else
+        {
+            burstTurnTimer += deltaTime;
+            if (burstTurnTimer >= burstTurnInterval)
+            {
+                burstTurnTimer = 0f;
+                burstTurnRemainingTime = burstTurnDuration;
+            }
+        }
+
+        float currentTurnSpeed = burstTurnRemainingTime > 0f ? burstTurnSpeed : turnSpeed;
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, currentTurnSpeed * deltaTime);
+        transform.position += transform.forward * (moveSpeed * deltaTime);
+
+        if (hasTankBounds)
+        {
+            Vector3 pos = transform.position;
+            pos.x = Mathf.Clamp(pos.x, tankCenter.x - tankExtents.x, tankCenter.x + tankExtents.x);
+            pos.y = Mathf.Clamp(pos.y, tankCenter.y - tankExtents.y, tankCenter.y + tankExtents.y);
+            pos.z = Mathf.Clamp(pos.z, tankCenter.z - tankExtents.z, tankCenter.z + tankExtents.z);
+            transform.position = pos;
+        }
     }
 
     private Vector3 CalculateHuntingForce()
     {
-        FishMovement bestTarget = null;
-        float bestScore = float.MaxValue;
+        FishSpatialGrid grid = FishMovement.SpatialGrid;
+        Vector3 predatorPos = transform.position;
+        float visionRadiusSqr = visionRadius * visionRadius;
+        Vector3[] fishPositions = FishMovement.CachedPositions;
+        int fishCount = FishMovement.CachedCount;
 
-        for (int i = 0; i < FishMovement.ActiveFish.Count; i++)
+        bool useGrid = grid != null;
+        int outerCount;
+
+        if (useGrid)
         {
-            FishMovement fish = FishMovement.ActiveFish[i];
-            if (fish == null) continue;
-
-            float distanceToPredator = Vector3.Distance(transform.position, fish.transform.position);
-            
-            // ignore fish outside of vision
-            if (distanceToPredator > visionRadius) continue;
-
-            // checking how many neighbors this fish has (isolation rule)
-            int neighborCount = 0;
-            for (int j = 0; j < FishMovement.ActiveFish.Count; j++)
-            {
-                if (i == j) continue;
-                FishMovement otherFish = FishMovement.ActiveFish[j];
-                if (Vector3.Distance(fish.transform.position, otherFish.transform.position) < isolationCheckRadius)
-                {
-                    neighborCount++;
-                }
-            }
-
-            // lower score better, real distance + fake distance (group penalty)
-            float score = distanceToPredator + (neighborCount * isolationPenalty);
-
-            if (score < bestScore)
-            {
-                bestScore = score;
-                bestTarget = fish;
-            }
+            grid.QueryRadius(predatorPos, visionRadius, gridQueryResults);
+            outerCount = gridQueryResults.Count;
+        }
+        else
+        {
+            outerCount = fishCount;
         }
 
-        // apply force towards the best target
-        if (bestTarget != null)
+        // find center of mass of all visible fish
+        Vector3 centerOfMass = Vector3.zero;
+        int visibleCount = 0;
+
+        for (int c = 0; c < outerCount; c++)
         {
-            Vector3 toTarget = (bestTarget.transform.position - transform.position).normalized;
-            return toTarget * chaseStrength;
+            int i = useGrid ? gridQueryResults[c] : c;
+            if (i >= fishCount) continue;
+
+            Vector3 fishPos = fishPositions[i];
+            Vector3 toFish = fishPos - predatorPos;
+
+            if (toFish.sqrMagnitude > visionRadiusSqr) continue;
+
+            centerOfMass += fishPos;
+            visibleCount++;
         }
 
-        return Vector3.zero; // wander if no target found
+        if (visibleCount > 0)
+        {
+            centerOfMass /= visibleCount;
+            Vector3 toCenter = (centerOfMass - predatorPos).normalized;
+            return toCenter * chaseStrength;
+        }
+
+        return Vector3.zero; // wander if no fish visible
     }
 
     public void SetTankBounds(Vector3 center, Vector3 extents)
@@ -234,39 +274,56 @@ public class PredatorMovement : MonoBehaviour
 
     private void TryEat()
     {
-        if (Time.time < lastEatTime + eatCooldown) { // dont eat if on cooldown
-            return;
-            } 
+        // collect all prey within eat radius, sorted by distance
+        float now = Time.time;
+        int eaten = 0;
 
-        FishMovement closestPrey = null;
-        float closestDist = float.MaxValue;
-
-        for (int i = 0; i < FishMovement.ActiveFish.Count; i++) // finding closest fish
+        // clean up expired cooldowns periodically
+        if (fishEatCooldowns.Count > 0)
         {
-            FishMovement prey = FishMovement.ActiveFish[i];
-            if (prey == null) 
+            cooldownCleanupKeys.Clear();
+            foreach (var kvp in fishEatCooldowns)
             {
-                continue;
+                if (now >= kvp.Value) cooldownCleanupKeys.Add(kvp.Key);
             }
-
-            float dist = Vector3.Distance(transform.position, prey.transform.position);
-
-            if (dist <= eatRadius && dist < closestDist) // if fish is closest and inside mouth
+            for (int k = 0; k < cooldownCleanupKeys.Count; k++)
             {
-                closestDist = dist;
-                closestPrey = prey;
+                fishEatCooldowns.Remove(cooldownCleanupKeys[k]);
             }
         }
 
-        if (closestPrey != null) // if close enough eat
+        for (int i = FishMovement.ActiveFish.Count - 1; i >= 0 && eaten < maxEatPerPass; i--)
         {
-            Eat(closestPrey);
+            FishMovement prey = FishMovement.ActiveFish[i];
+            if (prey == null) continue;
+
+            int id = prey.GetInstanceID();
+            if (fishEatCooldowns.ContainsKey(id) && now < fishEatCooldowns[id]) continue;
+
+            float dist = Vector3.Distance(transform.position, prey.transform.position);
+            if (dist <= eatRadius)
+            {
+                Eat(prey);
+                eaten++;
+            }
         }
     }
 
     private void Eat(FishMovement prey)
     {
-        lastEatTime = Time.time;
+        // put nearby fish on cooldown so they can't all be eaten in the same spot instantly
+        float now = Time.time;
+        for (int i = 0; i < FishMovement.ActiveFish.Count; i++)
+        {
+            FishMovement other = FishMovement.ActiveFish[i];
+            if (other == null || other == prey) continue;
+            float dist = Vector3.Distance(prey.transform.position, other.transform.position);
+            if (dist <= eatRadius * 2f)
+            {
+                int id = other.GetInstanceID();
+                fishEatCooldowns[id] = now + eatCooldown;
+            }
+        }
 
         Destroy(prey.gameObject);
     }
