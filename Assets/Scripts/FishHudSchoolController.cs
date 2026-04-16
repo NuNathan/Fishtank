@@ -17,10 +17,10 @@ public class FishHudSchoolController : MonoBehaviour
     private static class HudLayout
     {
         public static readonly Vector2 PanelPosition = new Vector2(20f, -20f);
-        public static readonly Vector2 PanelSize = new Vector2(420f, 362f);
+        public static readonly Vector2 PanelSize = new Vector2(420f, 406f);
         public static readonly Vector2 HeaderPosition = new Vector2(12f, -10f);
         public static readonly Vector2 HeaderSize = new Vector2(396f, 24f);
-        public static readonly Vector2 FooterPosition = new Vector2(12f, -328f);
+        public static readonly Vector2 FooterPosition = new Vector2(12f, -372f);
         public static readonly Vector2 FooterSize = new Vector2(396f, 18f);
         public static readonly Vector2 LabelSize = new Vector2(170f, 24f);
         public static readonly Vector2 SliderOffset = new Vector2(178f, -(LabelSize.y * HudTextScale - 18f) * 0.5f);
@@ -31,7 +31,7 @@ public class FishHudSchoolController : MonoBehaviour
         public const float ContentLeft = 12f;
         public const float FirstRowY = -74f;
         public const float RowSpacing = 44f;
-        public const float ButtonRowY = -296f;
+        public const float ButtonRowY = -340f;
         public const float ButtonSpacing = 12f;
 
         public static Vector2 GetRowPosition(int rowIndex)
@@ -88,6 +88,9 @@ public class FishHudSchoolController : MonoBehaviour
     private Text simDurationValueText;
     private float simTimeRemaining;
     private bool simTimerActive;
+    private bool timeLimitEnabled = true;
+    private Button timeLimitToggleButton;
+    private Text timeLimitToggleText;
     private static FishHudSchoolController instance;
     private bool schoolMovementActive;
     private bool missingTankWarningShown;
@@ -139,7 +142,7 @@ public class FishHudSchoolController : MonoBehaviour
         SyncTuningToInstances();
 
         // Simulation timer countdown
-        if (simTimerActive && schoolMovementActive)
+        if (timeLimitEnabled && simTimerActive && schoolMovementActive)
         {
             simTimeRemaining -= Time.deltaTime;
             if (simTimeRemaining <= 0f)
@@ -295,6 +298,13 @@ public class FishHudSchoolController : MonoBehaviour
         simDurationSlider = CreateLabeledSlider(panelObject.transform, font, "Run time (mins)", rowIndex++, 1f, 5f, out simDurationValueText);
         simDurationSlider.wholeNumbers = true;
         simDurationSlider.SetValueWithoutNotify(1f);
+
+        // Unlimited toggle button — own row beneath the runtime slider
+        Vector2 toggleRowPos = HudLayout.GetRowPosition(rowIndex++);
+        Vector2 toggleSize = new Vector2(HudLayout.PanelSize.x - HudLayout.ContentLeft * 2f, HudLayout.ButtonSize.y);
+        timeLimitToggleButton = CreateButton(panelObject.transform, font, "Timed: ON", toggleRowPos, toggleSize, OnTimeLimitToggleClicked);
+        timeLimitToggleText = timeLimitToggleButton.GetComponentInChildren<Text>();
+        RefreshTimeLimitToggle();
 
         CreateButton(panelObject.transform, font, "Play", HudLayout.GetButtonPosition(0), HudLayout.ButtonSize, OnPlayClicked);
         CreateButton(panelObject.transform, font, "Pause", HudLayout.GetButtonPosition(1), HudLayout.ButtonSize, OnPauseClicked);
@@ -459,7 +469,7 @@ public class FishHudSchoolController : MonoBehaviour
 
     private void OnPlayClicked()
     {
-        if (simDurationSlider != null)
+        if (timeLimitEnabled && simDurationSlider != null)
         {
             simTimeRemaining = Mathf.RoundToInt(simDurationSlider.value) * 60f;
             simTimerActive = true;
@@ -481,6 +491,40 @@ public class FishHudSchoolController : MonoBehaviour
         if (simDurationValueText != null && simDurationSlider != null)
             simDurationValueText.text = Mathf.RoundToInt(simDurationSlider.value).ToString();
         ApplySettings();
+    }
+
+    private void OnTimeLimitToggleClicked()
+    {
+        timeLimitEnabled = !timeLimitEnabled;
+        simTimerActive = false;
+        simTimeRemaining = 0f;
+        RefreshTimeLimitToggle();
+    }
+
+    private void RefreshTimeLimitToggle()
+    {
+        if (simDurationSlider != null)
+            simDurationSlider.interactable = timeLimitEnabled;
+
+        if (simDurationValueText != null)
+        {
+            if (!timeLimitEnabled)
+                simDurationValueText.text = "∞";
+            else if (simDurationSlider != null)
+                simDurationValueText.text = Mathf.RoundToInt(simDurationSlider.value).ToString();
+        }
+
+        if (timeLimitToggleText != null)
+            timeLimitToggleText.text = timeLimitEnabled ? "Timed: ON" : "Unlimited";
+
+        if (timeLimitToggleButton != null)
+        {
+            Image img = timeLimitToggleButton.GetComponent<Image>();
+            if (img != null)
+                img.color = timeLimitEnabled
+                    ? new Color(0.17f, 0.24f, 0.35f, 1f)
+                    : new Color(0.10f, 0.50f, 0.30f, 1f);
+        }
     }
 
     public static void OnFishEaten()
@@ -846,7 +890,7 @@ public class FishHudSchoolController : MonoBehaviour
             sharkCountValueText.text = displayedSharkCount.ToString();
         }
 
-        if (simDurationValueText != null && simDurationSlider != null)
+        if (simDurationValueText != null && simDurationSlider != null && timeLimitEnabled && !simTimerActive)
         {
             simDurationValueText.text = Mathf.RoundToInt(simDurationSlider.value).ToString();
         }
