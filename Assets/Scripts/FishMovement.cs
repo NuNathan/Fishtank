@@ -41,15 +41,6 @@ public class FishMovement : MonoBehaviour
         }
     }
 
-    private static float FastPow(float x, float exp)
-    {
-        if (exp == 1f) return x;
-        if (exp == 2f) return x * x;
-        if (exp == 3f) return x * x * x;
-        if (exp == 4f) { float x2 = x * x; return x2 * x2; }
-        return Mathf.Pow(x, exp);
-    }
-
     [Header("Movement")]
     [SerializeField] private bool startMovingOnSpawn = false;
     [SerializeField] private float idleSpeed = 1.5f; // slow drift when no predator nearby
@@ -64,8 +55,6 @@ public class FishMovement : MonoBehaviour
     [Header("Schooling")]
     [SerializeField] private float schoolingStrength = 0.7f;
     [SerializeField] private float preferredNeighborDistance = 1.1f;
-    [SerializeField] private float attractionExponent = 3f;
-    [SerializeField] private float repulsionExponent = 1f;
     [SerializeField] private float interactionRadius = 3f;
     [SerializeField] private float maxSchoolingForce = 1.5f;
     [SerializeField] private float alignmentStrength = 0.75f;
@@ -240,7 +229,6 @@ public class FishMovement : MonoBehaviour
         float maxRadiusSqr = Mathf.Max(safeInteractionRadius, safeSeparationRadius);
         maxRadiusSqr *= maxRadiusSqr;
 
-        Vector3 softRepulsionForce = Vector3.zero;
         Vector3 hardSeparationForce = Vector3.zero;
         Vector3 weightedNeighborPositionSum = Vector3.zero;
         Vector3 weightedNeighborForwardSum = Vector3.zero;
@@ -287,16 +275,6 @@ public class FishMovement : MonoBehaviour
 
             if (safeInteractionRadius > 0f && distance > safeInteractionRadius)
             {
-                continue;
-            }
-
-            float normalizedDistance = distance / safePreferredDistance;
-            float forceScale = FastPow(normalizedDistance, attractionExponent) - FastPow(normalizedDistance, repulsionExponent);
-            Vector3 pairForce = -forceScale * displacement;
-
-            if (forceScale <= 0f)
-            {
-                softRepulsionForce += pairForce;
                 continue;
             }
 
@@ -351,7 +329,7 @@ public class FishMovement : MonoBehaviour
         }
 
         Vector3 separationForce = Vector3.ClampMagnitude(hardSeparationForce * Mathf.Max(0f, separationStrength), Mathf.Max(0f, maxSeparationForce));
-        Vector3 schoolingForce = ((softRepulsionForce + cohesionForce) * Mathf.Max(0f, schoolingStrength)) + alignmentForce;
+        Vector3 schoolingForce = (cohesionForce * Mathf.Max(0f, schoolingStrength)) + alignmentForce;
         schoolingForce = Vector3.ClampMagnitude(schoolingForce, Mathf.Max(0f, maxSchoolingForce));
         return separationForce + schoolingForce;
     }

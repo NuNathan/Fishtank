@@ -33,11 +33,8 @@ public class PredatorMovement : MonoBehaviour
 
     [Header("Eating")]
     [SerializeField] private float eatRadius = 0.8f; // how close the shark needs to be to bite
-    [SerializeField] private float eatCooldown = 1.5f; // per-fish cooldown after being eaten nearby
     [SerializeField] private int maxEatPerPass = 3; // max fish eaten in a single pass
 
-    private readonly Dictionary<int, float> fishEatCooldowns = new Dictionary<int, float>();
-    private readonly List<int> cooldownCleanupKeys = new List<int>();
     private bool isMoving;
     private bool movementStateInitialized;
     private Quaternion targetRotation;
@@ -274,57 +271,20 @@ public class PredatorMovement : MonoBehaviour
 
     private void TryEat()
     {
-        // collect all prey within eat radius, sorted by distance
-        float now = Time.time;
         int eaten = 0;
-
-        // clean up expired cooldowns periodically
-        if (fishEatCooldowns.Count > 0)
-        {
-            cooldownCleanupKeys.Clear();
-            foreach (var kvp in fishEatCooldowns)
-            {
-                if (now >= kvp.Value) cooldownCleanupKeys.Add(kvp.Key);
-            }
-            for (int k = 0; k < cooldownCleanupKeys.Count; k++)
-            {
-                fishEatCooldowns.Remove(cooldownCleanupKeys[k]);
-            }
-        }
 
         for (int i = FishMovement.ActiveFish.Count - 1; i >= 0 && eaten < maxEatPerPass; i--)
         {
             FishMovement prey = FishMovement.ActiveFish[i];
             if (prey == null) continue;
 
-            int id = prey.GetInstanceID();
-            if (fishEatCooldowns.ContainsKey(id) && now < fishEatCooldowns[id]) continue;
-
             float dist = Vector3.Distance(transform.position, prey.transform.position);
             if (dist <= eatRadius)
             {
-                Eat(prey);
+                FishHudSchoolController.OnFishEaten();
+                Destroy(prey.gameObject);
                 eaten++;
             }
         }
-    }
-
-    private void Eat(FishMovement prey)
-    {
-        // put nearby fish on cooldown so they can't all be eaten in the same spot instantly
-        float now = Time.time;
-        for (int i = 0; i < FishMovement.ActiveFish.Count; i++)
-        {
-            FishMovement other = FishMovement.ActiveFish[i];
-            if (other == null || other == prey) continue;
-            float dist = Vector3.Distance(prey.transform.position, other.transform.position);
-            if (dist <= eatRadius * 2f)
-            {
-                int id = other.GetInstanceID();
-                fishEatCooldowns[id] = now + eatCooldown;
-            }
-        }
-        FishHudSchoolController.OnFishEaten();
-        Destroy(prey.gameObject);
     }
 }
