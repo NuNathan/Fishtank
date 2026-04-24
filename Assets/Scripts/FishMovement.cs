@@ -283,7 +283,7 @@ public class FishMovement : MonoBehaviour
                 continue;
             }
 
-            // Inlined cone check + weight calculation
+            // cone check + weight calculation
             Vector3 toOtherFromConeOrigin = otherPosition - coneOrigin;
             float coneSqrDist = toOtherFromConeOrigin.sqrMagnitude;
 
@@ -368,8 +368,7 @@ public class FishMovement : MonoBehaviour
 
                 Vector3 awayDir = -toPredator.normalized;
 
-                // lateral direction based on shark's charge heading
-                // sign determined by which side of the shark the fish is on
+                // lateral direction based on shark heading
                 Vector3 sharkForward = predator.transform.forward;
                 Vector3 sharkRight = Vector3.Cross(sharkForward, Vector3.up);
                 if (sharkRight.sqrMagnitude < 0.0001f)
@@ -378,7 +377,6 @@ public class FishMovement : MonoBehaviour
                 }
                 sharkRight = sharkRight.normalized;
 
-                // fish on the shark's right side flees right, left side flees left
                 float sign = Vector3.Dot(-toPredator, sharkRight) >= 0f ? 1f : -1f;
                 Vector3 lateralDir = sharkRight * sign;
 
@@ -511,7 +509,6 @@ public class FishMovement : MonoBehaviour
         Gizmos.color = Color.cyan;
         Gizmos.DrawLine(origin, tip);
 
-        // Arrowhead
         float headLength = debugArrowLength * 0.2f;
         float headWidth = headLength * 0.4f;
         Vector3 right = Vector3.Cross(lastDesiredForward, Vector3.up);

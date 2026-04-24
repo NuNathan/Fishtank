@@ -7,7 +7,7 @@ public class PredatorMovement : MonoBehaviour
 
     [Header("Movement")]
     [SerializeField] private bool startMovingOnSpawn = false;
-    [SerializeField] private float moveSpeed = 3f;//2.5f;
+    [SerializeField] private float moveSpeed = 3f;
     [SerializeField] private float turnSpeed = 0.4f;
 
     public float MoveSpeedValue { get => moveSpeed; set => moveSpeed = value; }

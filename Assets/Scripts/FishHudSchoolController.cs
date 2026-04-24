@@ -299,7 +299,7 @@ public class FishHudSchoolController : MonoBehaviour
         simDurationSlider.wholeNumbers = true;
         simDurationSlider.SetValueWithoutNotify(1f);
 
-        // Unlimited toggle button — own row beneath the runtime slider
+        // Unlimited toggle button
         Vector2 toggleRowPos = HudLayout.GetRowPosition(rowIndex++);
         Vector2 toggleSize = new Vector2(HudLayout.PanelSize.x - HudLayout.ContentLeft * 2f, HudLayout.ButtonSize.y);
         timeLimitToggleButton = CreateButton(panelObject.transform, font, "Timed: ON", toggleRowPos, toggleSize, OnTimeLimitToggleClicked);
@@ -322,13 +322,13 @@ public class FishHudSchoolController : MonoBehaviour
         fishCountSlider.onValueChanged.AddListener(OnFishCountChanged);
         sharkCountSlider.onValueChanged.AddListener(OnSharkCountChanged);
 
-        // Right panel - runtime tuning
+        // Right panel
         BuildRightPanel(canvasObject.transform, font);
     }
 
     private void BuildRightPanel(Transform canvasTransform, Font font)
     {
-        int totalRows = 11; // 2 headers + 9 sliders
+        int totalRows = 11;
         float rightPanelHeight = -HudLayout.FirstRowY + (HudLayout.RowSpacing * totalRows) + 20f;
         GameObject rightPanelObject = new GameObject("TuningPanel", typeof(RectTransform), typeof(Image));
         rightPanelObject.transform.SetParent(canvasTransform, false);
